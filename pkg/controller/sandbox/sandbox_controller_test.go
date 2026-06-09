@@ -318,7 +318,7 @@ func TestSandboxReconciler_Reconcile(t *testing.T) {
 			wantErr:       false,
 		},
 		{
-			name: "sandbox paused - should set to paused",
+			name: "sandbox paused - should set to pausing",
 			sandbox: &agentsv1alpha1.Sandbox{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "paused-sandbox",
@@ -352,7 +352,7 @@ func TestSandboxReconciler_Reconcile(t *testing.T) {
 					Phase: corev1.PodRunning,
 				},
 			},
-			expectedPhase: agentsv1alpha1.SandboxPaused,
+			expectedPhase: agentsv1alpha1.SandboxPausing,
 			wantErr:       false,
 		},
 		{
@@ -1723,7 +1723,7 @@ func TestCalculateStatus(t *testing.T) {
 			expectedShouldReq: true,
 		},
 		{
-			name: "running phase with paused spec should set to paused",
+			name: "running phase with paused spec should set to pausing",
 			pod: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-sandbox",
@@ -1759,13 +1759,133 @@ func TestCalculateStatus(t *testing.T) {
 					},
 				},
 			},
-			expectedPhase:     agentsv1alpha1.SandboxPaused,
+			expectedPhase:     agentsv1alpha1.SandboxPausing,
 			expectedShouldReq: false,
 			checkConditions: func(t *testing.T, status *agentsv1alpha1.SandboxStatus) {
 				// Should remove resumed condition
 				for _, cond := range status.Conditions {
 					if cond.Type == string(agentsv1alpha1.SandboxConditionResumed) {
 						t.Errorf("Resumed condition should be removed")
+					}
+				}
+				// Should set SandboxPaused condition to False
+				found := false
+				for _, cond := range status.Conditions {
+					if cond.Type == string(agentsv1alpha1.SandboxConditionPaused) {
+						found = true
+						if cond.Status != metav1.ConditionFalse {
+							t.Errorf("SandboxPaused condition status should be False, got %s", cond.Status)
+						}
+						if cond.Reason != agentsv1alpha1.SandboxPausedReasonSetPause {
+							t.Errorf("SandboxPaused condition reason should be SetPause, got %s", cond.Reason)
+						}
+					}
+				}
+				if !found {
+					t.Errorf("SandboxPaused condition should be set to False when entering Pausing")
+				}
+			},
+		},
+		{
+			name: "pausing phase with paused condition true should set to paused",
+			pod:  nil,
+			box: &agentsv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-sandbox",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: agentsv1alpha1.SandboxSpec{
+					Paused: true,
+					EmbeddedSandboxTemplate: agentsv1alpha1.EmbeddedSandboxTemplate{
+						Template: &corev1.PodTemplateSpec{
+							Spec: corev1.PodSpec{
+								Containers: []corev1.Container{{Name: "test", Image: "nginx"}},
+							},
+						},
+					},
+				},
+			},
+			initStatus: &agentsv1alpha1.SandboxStatus{
+				Phase: agentsv1alpha1.SandboxPausing,
+				Conditions: []metav1.Condition{
+					{
+						Type:   string(agentsv1alpha1.SandboxConditionPaused),
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+			expectedPhase:     agentsv1alpha1.SandboxPaused,
+			expectedShouldReq: false,
+		},
+		{
+			name: "pausing phase with paused condition false should stay pausing",
+			pod:  nil,
+			box: &agentsv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-sandbox",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: agentsv1alpha1.SandboxSpec{
+					Paused: true,
+					EmbeddedSandboxTemplate: agentsv1alpha1.EmbeddedSandboxTemplate{
+						Template: &corev1.PodTemplateSpec{
+							Spec: corev1.PodSpec{
+								Containers: []corev1.Container{{Name: "test", Image: "nginx"}},
+							},
+						},
+					},
+				},
+			},
+			initStatus: &agentsv1alpha1.SandboxStatus{
+				Phase: agentsv1alpha1.SandboxPausing,
+				Conditions: []metav1.Condition{
+					{
+						Type:   string(agentsv1alpha1.SandboxConditionPaused),
+						Status: metav1.ConditionFalse,
+					},
+				},
+			},
+			expectedPhase:     agentsv1alpha1.SandboxPausing,
+			expectedShouldReq: false,
+		},
+		{
+			name: "pausing phase with spec.paused false and condition false should return to running",
+			pod:  nil,
+			box: &agentsv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-sandbox",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: agentsv1alpha1.SandboxSpec{
+					Paused: false,
+					EmbeddedSandboxTemplate: agentsv1alpha1.EmbeddedSandboxTemplate{
+						Template: &corev1.PodTemplateSpec{
+							Spec: corev1.PodSpec{
+								Containers: []corev1.Container{{Name: "test", Image: "nginx"}},
+							},
+						},
+					},
+				},
+			},
+			initStatus: &agentsv1alpha1.SandboxStatus{
+				Phase: agentsv1alpha1.SandboxPausing,
+				Conditions: []metav1.Condition{
+					{
+						Type:   string(agentsv1alpha1.SandboxConditionPaused),
+						Status: metav1.ConditionFalse,
+					},
+				},
+			},
+			expectedPhase:     agentsv1alpha1.SandboxRunning,
+			expectedShouldReq: false,
+			checkConditions: func(t *testing.T, status *agentsv1alpha1.SandboxStatus) {
+				// Should remove paused condition when user cancels
+				for _, cond := range status.Conditions {
+					if cond.Type == string(agentsv1alpha1.SandboxConditionPaused) {
+						t.Errorf("SandboxPaused condition should be removed when transitioning back to Running")
 					}
 				}
 			},

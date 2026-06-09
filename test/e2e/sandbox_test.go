@@ -227,6 +227,107 @@ var _ = Describe("Sandbox", func() {
 	})
 
 	Context("pause and resume lifecycle", func() {
+		It("should transition through Pausing phase before reaching Paused", func() {
+			By("Creating a new Sandbox")
+			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
+
+			By("Waiting for sandbox to reach Running phase")
+			Eventually(func() agentsv1alpha1.SandboxPhase {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      sandbox.Name,
+					Namespace: sandbox.Namespace,
+				}, sandbox)
+				return sandbox.Status.Phase
+			}, time.Second*60, time.Millisecond*500).Should(Equal(agentsv1alpha1.SandboxRunning))
+
+			By("Pausing the sandbox")
+			originalSandbox := &agentsv1alpha1.Sandbox{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      sandbox.Name,
+				Namespace: sandbox.Namespace,
+			}, originalSandbox)).To(Succeed())
+
+			originalSandbox.Spec.Paused = true
+			Expect(updateSandboxSpec(ctx, originalSandbox)).To(Succeed())
+
+			By("Verifying sandbox transitions through Pausing phase first")
+			Eventually(func() agentsv1alpha1.SandboxPhase {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      sandbox.Name,
+					Namespace: sandbox.Namespace,
+				}, sandbox)
+				return sandbox.Status.Phase
+			}, time.Second*10, time.Millisecond*100).Should(Equal(agentsv1alpha1.SandboxPausing))
+
+			By("Verifying SandboxPaused condition is False while in Pausing phase")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      sandbox.Name,
+				Namespace: sandbox.Namespace,
+			}, sandbox)).To(Succeed())
+			pausedCond := utils.GetSandboxCondition(&sandbox.Status, string(agentsv1alpha1.SandboxConditionPaused))
+			Expect(pausedCond).NotTo(BeNil())
+			Expect(pausedCond.Status).To(Equal(metav1.ConditionFalse))
+
+			By("Verifying sandbox completes transition to Paused phase")
+			Eventually(func() agentsv1alpha1.SandboxPhase {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      sandbox.Name,
+					Namespace: sandbox.Namespace,
+				}, sandbox)
+				return sandbox.Status.Phase
+			}, time.Second*30, time.Millisecond*500).Should(Equal(agentsv1alpha1.SandboxPaused))
+
+			By("Verifying SandboxPaused condition is True after reaching Paused phase")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      sandbox.Name,
+				Namespace: sandbox.Namespace,
+			}, sandbox)).To(Succeed())
+			pausedCond = utils.GetSandboxCondition(&sandbox.Status, string(agentsv1alpha1.SandboxConditionPaused))
+			Expect(pausedCond).NotTo(BeNil())
+			Expect(pausedCond.Status).To(Equal(metav1.ConditionTrue))
+
+			By("Verifying the associated pod is deleted when paused")
+			Eventually(func() bool {
+				pod := &corev1.Pod{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      sandbox.Name,
+					Namespace: sandbox.Namespace,
+				}, pod)
+				return err != nil
+			}, time.Second*30, time.Millisecond*500).Should(BeTrue())
+
+			By("Resuming the sandbox")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      sandbox.Name,
+				Namespace: sandbox.Namespace,
+			}, originalSandbox)).To(Succeed())
+
+			originalSandbox.Spec.Paused = false
+			Expect(updateSandboxSpec(ctx, originalSandbox)).To(Succeed())
+
+			By("Verifying sandbox transitions to Resuming phase")
+			Eventually(func() agentsv1alpha1.SandboxPhase {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      sandbox.Name,
+					Namespace: sandbox.Namespace,
+				}, sandbox)
+				return sandbox.Status.Phase
+			}, time.Second*30, time.Millisecond*500).Should(Equal(agentsv1alpha1.SandboxResuming))
+
+			By("Verifying sandbox transitions to Running after resuming")
+			Eventually(func() agentsv1alpha1.SandboxPhase {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      sandbox.Name,
+					Namespace: sandbox.Namespace,
+				}, sandbox)
+				return sandbox.Status.Phase
+			}, time.Second*60, time.Millisecond*500).Should(Equal(agentsv1alpha1.SandboxRunning))
+
+			By("Verifying resumed sandbox has pod information")
+			Expect(sandbox.Status.PodInfo.PodIP).NotTo(BeEmpty())
+			Expect(sandbox.Status.SandboxIp).NotTo(BeEmpty())
+		})
+
 		It("should pause and resume sandbox successfully", func() {
 			By("Creating a new Sandbox")
 			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())

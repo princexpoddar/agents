@@ -288,6 +288,10 @@ func (s *Sandbox) Pause(ctx context.Context, opts infra.PauseOptions) error {
 	}
 
 	cond := GetSandboxCondition(s.Sandbox, agentsv1alpha1.SandboxConditionPaused)
+	if s.Status.Phase == agentsv1alpha1.SandboxPausing {
+		log.Info("sandbox is already pausing")
+		return nil
+	}
 	if s.Status.Phase == agentsv1alpha1.SandboxPaused {
 		if cond.Status == metav1.ConditionTrue {
 			log.Info("sandbox is already paused")

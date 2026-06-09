@@ -321,7 +321,7 @@ func IsSandboxPausable(sbx *agentsv1alpha1.Sandbox) (bool, string) {
 		}
 	}
 	switch sbx.Status.Phase {
-	case agentsv1alpha1.SandboxRunning, agentsv1alpha1.SandboxPaused:
+	case agentsv1alpha1.SandboxRunning, agentsv1alpha1.SandboxPaused, agentsv1alpha1.SandboxPausing:
 		return true, "SandboxIsRunningOrPaused"
 	default:
 		return false, "SandboxPhaseNotAllowed"
@@ -346,6 +346,9 @@ func IsSandboxResumable(sbx *agentsv1alpha1.Sandbox) (bool, string) {
 		if paused {
 			return true, "SandboxIsPaused"
 		}
+		return false, "SandboxIsPausing"
+	}
+	if sbx.Status.Phase == agentsv1alpha1.SandboxPausing {
 		return false, "SandboxIsPausing"
 	}
 	return false, "SandboxPhaseNotAllowed"

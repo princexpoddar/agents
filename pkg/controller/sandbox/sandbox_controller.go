@@ -274,6 +274,8 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (cr
 		requeueAfter, err = r.getControl(args.Pod).EnsureSandboxRunning(ctx, args)
 	case agentsv1alpha1.SandboxRunning:
 		err = r.getControl(args.Pod).EnsureSandboxUpdated(ctx, args)
+	case agentsv1alpha1.SandboxPausing:
+		err = r.EnsureSandboxPaused(ctx, args)
 	case agentsv1alpha1.SandboxPaused:
 		err = r.EnsureSandboxPaused(ctx, args)
 	case agentsv1alpha1.SandboxResuming:
@@ -383,12 +385,20 @@ func (r *SandboxReconciler) calculateStatus(ctx context.Context, args core.Ensur
 			return newStatus, true
 		}
 
-		// If it is paused, first set the sandbox to the Paused state.
-		// To prevent loss of state information, the state immediately before Paused must currently be Running.
+		// If it is paused, first set the sandbox to the Pausing state.
+		// To prevent loss of state information, the state immediately before Pausing must currently be Running.
 		if box.Spec.Paused {
 			// The paused and resumed condition are exclusive
 			utils.RemoveSandboxCondition(newStatus, string(agentsv1alpha1.SandboxConditionResumed))
-			newStatus.Phase = agentsv1alpha1.SandboxPaused
+			newStatus.Phase = agentsv1alpha1.SandboxPausing
+			// Set initial pause condition to False
+			pauseCond := metav1.Condition{
+				Type:               string(agentsv1alpha1.SandboxConditionPaused),
+				Status:             metav1.ConditionFalse,
+				Reason:             agentsv1alpha1.SandboxPausedReasonSetPause,
+				LastTransitionTime: metav1.Now(),
+			}
+			utils.SetSandboxCondition(newStatus, pauseCond)
 			// Check for upgrade: if template has changed (hash mismatch), transition to Upgrading phase
 		} else if pod != nil && pod.Labels[agentsv1alpha1.PodLabelTemplateHash] != newStatus.UpdateRevision &&
 			box.Spec.UpgradePolicy != nil && box.Spec.UpgradePolicy.Type == agentsv1alpha1.SandboxUpgradePolicyRecreate {
@@ -397,6 +407,19 @@ func (r *SandboxReconciler) calculateStatus(ctx context.Context, args core.Ensur
 				"sandboxRevision", newStatus.UpdateRevision)
 			newStatus.Phase = agentsv1alpha1.SandboxUpgrading
 			utils.RemoveSandboxCondition(newStatus, string(agentsv1alpha1.SandboxConditionUpgrading))
+		}
+
+	case agentsv1alpha1.SandboxPausing:
+		pauseCond := utils.GetSandboxCondition(newStatus, string(agentsv1alpha1.SandboxConditionPaused))
+		// Transition to Paused only when condition confirms completion
+		if pauseCond != nil && pauseCond.Status == metav1.ConditionTrue {
+			newStatus.Phase = agentsv1alpha1.SandboxPaused
+		}
+		// Handle user canceling pause before completion
+		if !box.Spec.Paused && pauseCond != nil && pauseCond.Status == metav1.ConditionFalse {
+			// User unpaused before pause completed, transition back to Running
+			utils.RemoveSandboxCondition(newStatus, string(agentsv1alpha1.SandboxConditionPaused))
+			newStatus.Phase = agentsv1alpha1.SandboxRunning
 		}
 
 	case agentsv1alpha1.SandboxPaused:

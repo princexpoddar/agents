@@ -1416,6 +1416,16 @@ func TestGetSandboxState(t *testing.T) {
 			expectedState:  agentsv1alpha1.SandboxStatePaused,
 			expectedReason: "NotRunningResourceClaimed",
 		},
+		{
+			name: "Pausing Sandbox treated as paused state",
+			sandbox: &agentsv1alpha1.Sandbox{
+				Status: agentsv1alpha1.SandboxStatus{
+					Phase: agentsv1alpha1.SandboxPausing,
+				},
+			},
+			expectedState:  agentsv1alpha1.SandboxStatePaused,
+			expectedReason: "NotRunningResourceClaimed",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1605,6 +1615,16 @@ func TestIsSandboxPausable(t *testing.T) {
 			expectedReason: "SandboxIsRunningOrPaused",
 		},
 		{
+			name: "Pausing sandbox is pausable (idempotent)",
+			sandbox: &agentsv1alpha1.Sandbox{
+				Status: agentsv1alpha1.SandboxStatus{
+					Phase: agentsv1alpha1.SandboxPausing,
+				},
+			},
+			expectedResult: true,
+			expectedReason: "SandboxIsRunningOrPaused",
+		},
+		{
 			name: "Pending sandbox is not pausable",
 			sandbox: &agentsv1alpha1.Sandbox{
 				Status: agentsv1alpha1.SandboxStatus{
@@ -1700,6 +1720,16 @@ func TestIsSandboxResumable(t *testing.T) {
 			},
 			expectedResult: false,
 			expectedReason: "SandboxPhaseNotAllowed",
+		},
+		{
+			name: "Pausing sandbox is not resumable",
+			sandbox: &agentsv1alpha1.Sandbox{
+				Status: agentsv1alpha1.SandboxStatus{
+					Phase: agentsv1alpha1.SandboxPausing,
+				},
+			},
+			expectedResult: false,
+			expectedReason: "SandboxIsPausing",
 		},
 	}
 

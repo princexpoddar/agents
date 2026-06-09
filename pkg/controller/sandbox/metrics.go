@@ -256,8 +256,10 @@ var (
 	allPhases = []agentsv1alpha1.SandboxPhase{
 		agentsv1alpha1.SandboxPending,
 		agentsv1alpha1.SandboxRunning,
+		agentsv1alpha1.SandboxPausing,
 		agentsv1alpha1.SandboxPaused,
 		agentsv1alpha1.SandboxResuming,
+		agentsv1alpha1.SandboxUpgrading,
 		agentsv1alpha1.SandboxSucceeded,
 		agentsv1alpha1.SandboxFailed,
 		agentsv1alpha1.SandboxTerminating,
