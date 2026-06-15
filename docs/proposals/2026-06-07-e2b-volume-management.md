@@ -1,18 +1,3 @@
----
-
-title: E2B-Compatible Volume Management APIs
-authors:
-
-* "@princexpoddar"
-
-  creation-date: 2026-06-07
-  last-updated: 2026-06-15
-  status: provisional
-  see-also: []
-  replaces: []
-  superseded-by: []
-
----
 
 # E2B-Compatible Volume Management APIs
 
